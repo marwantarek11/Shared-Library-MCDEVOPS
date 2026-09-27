@@ -21,6 +21,17 @@ def call(Map args) {
                 archiveArtifacts artifacts: 'trivy-report.*', allowEmptyArchive: true
                 publishHTML(target: [reportName: 'Trivy Report', reportDir: '.', reportFiles: 'trivy-report.html',
                                      keepAll: true, alwaysLinkToLastBuild: true, allowMissing: false])
+
+                // Warnings NG: severity charts, trend across builds, new/fixed/outstanding tracking
+                recordIssues(tools: [trivy(pattern: 'trivy-report.json', id: 'trivy', name: 'Trivy')],
+                             enabledForFailure: true, skipPublishingChecks: true)
+
+                // Severity counts on the build list / history
+                def counts = severity.split(',').collect { sev ->
+                    def n = sh(returnStdout: true, script: "grep -o '\"Severity\": *\"${sev}\"' trivy-report.json | wc -l").trim()
+                    "${sev} ${n}"
+                }
+                currentBuild.description = ([currentBuild.description, "Trivy: ${counts.join(' · ')}"] - null).join('\n')
                 int rc = sh(returnStatus: true, script: "trivy convert --severity ${severity} --exit-code ${exitCode} --format table --output /dev/null trivy-report.json")
                 if (rc != 0) {
                     error("Trivy found ${severity} vulnerabilities (exit code ${rc})")
