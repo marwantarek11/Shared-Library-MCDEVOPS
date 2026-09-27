@@ -23,6 +23,12 @@ spec:
       image: aquasec/trivy:0.74.0
       command: ["cat"]
       tty: true
+      env:
+        - name: TRIVY_CACHE_DIR
+          value: /trivy-cache
+      volumeMounts:
+        - name: trivy-cache
+          mountPath: /trivy-cache
       resources:
         requests: {cpu: 100m, memory: 256Mi}
         limits: {cpu: "1", memory: 1Gi}
@@ -33,3 +39,8 @@ spec:
       resources:
         requests: {cpu: 50m, memory: 64Mi}
         limits: {cpu: 500m, memory: 256Mi}
+  volumes:
+    # Persistent Trivy cache so the Java DB isn't re-downloaded every build (PVC: ~/jenkins/trivy-cache-pvc.yaml)
+    - name: trivy-cache
+      persistentVolumeClaim:
+        claimName: trivy-cache

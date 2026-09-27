@@ -1,6 +1,7 @@
 #!/usr/bin/env groovy
-def call() {
+// skipTests: true when an earlier stage already ran the tests (also skips `clean` so compiled classes are reused)
+def call(Map args = [:]) {
 	echo "Building App..."
 	    sh 'chmod +x ./gradlew'
-        sh './gradlew clean build'
+        sh(args.skipTests ? './gradlew build -x test' : './gradlew clean build')
 }
