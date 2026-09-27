@@ -11,7 +11,9 @@ def call(Map args) {
     echo "Scanning ${image} with Trivy (${severity})..."
     container('trivy') {
         withCredentials([string(credentialsId: credentialsId, variable: 'TRIVY_TOKEN')]) {
-            withEnv(["TRIVY_SERVER=${server}", 'TRIVY_INSECURE=true', 'TRIVY_NO_PROGRESS=true', 'TRIVY_DISABLE_VEX_NOTICE=true']) {
+            withEnv(["TRIVY_SERVER=${server}", 'TRIVY_INSECURE=true', 'TRIVY_NO_PROGRESS=true', 'TRIVY_DISABLE_VEX_NOTICE=true',
+                     // Fall back to ghcr.io when the mirror.gcr.io Java DB download fails
+                     'TRIVY_JAVA_DB_REPOSITORY=mirror.gcr.io/aquasec/trivy-java-db:1,ghcr.io/aquasecurity/trivy-java-db:1']) {
                 sh "trivy image --severity ${severity} --format json --output trivy-report.json ${image}"
                 sh 'trivy convert --format table --output trivy-report.txt trivy-report.json'
                 sh 'trivy convert --format template --template @/contrib/html.tpl --output trivy-report.html trivy-report.json'
