@@ -26,6 +26,9 @@ spec:
       env:
         - name: TRIVY_CACHE_DIR
           value: /trivy-cache
+        # Default 5m includes the Java DB download (~3-5 min when the 3-day cache expires)
+        - name: TRIVY_TIMEOUT
+          value: 15m
       volumeMounts:
         - name: trivy-cache
           mountPath: /trivy-cache
