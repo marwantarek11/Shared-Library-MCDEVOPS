@@ -1,0 +1,35 @@
+# Agent pod for kubeadm/containerd clusters (no Docker daemon)
+# jnlp is injected by the Kubernetes plugin; every container shares the workspace volume
+apiVersion: v1
+kind: Pod
+spec:
+  serviceAccountName: jenkins-deployer
+  containers:
+    - name: gradle
+      image: gradle:7.3.3-jdk11
+      command: ["cat"]
+      tty: true
+      resources:
+        requests: {cpu: 500m, memory: 1Gi}
+        limits: {cpu: "2", memory: 3Gi}
+    - name: kaniko
+      image: gcr.io/kaniko-project/executor:v1.23.2-debug
+      command: ["/busybox/cat"]
+      tty: true
+      resources:
+        requests: {cpu: 500m, memory: 1Gi}
+        limits: {cpu: "2", memory: 3Gi}
+    - name: trivy
+      image: aquasec/trivy:0.74.0
+      command: ["cat"]
+      tty: true
+      resources:
+        requests: {cpu: 100m, memory: 256Mi}
+        limits: {cpu: "1", memory: 1Gi}
+    - name: kubectl
+      image: alpine/kubectl:1.35.3
+      command: ["cat"]
+      tty: true
+      resources:
+        requests: {cpu: 50m, memory: 64Mi}
+        limits: {cpu: 500m, memory: 256Mi}
