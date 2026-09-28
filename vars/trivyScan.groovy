@@ -1,40 +1,49 @@
 #!/usr/bin/env groovy
-// Scan an image through the in-cluster Trivy server.
-// Scans once to JSON, then renders trivy-report.txt (console + artifact) and trivy-report.html ("Trivy Report" link on the build).
+// Scan through the in-cluster Trivy server: an image (default) or a directory (type: 'rootfs', e.g. built app + sources).
+// Scans once to JSON, then renders <report>.txt (console + artifact) and <report>.html ("<name> Report" link on the build).
+//   trivyScan(image: 'registry/app:1')                                                     -> image scan, "Trivy Report"
+//   trivyScan(type: 'rootfs', target: 'Application', scanners: 'vuln,secret',
+//             id: 'trivy-deps', name: 'Dependency Scan')                                   -> jars + secrets, "Dependency Scan Report"
 def call(Map args) {
-    String image         = args.image
+    String type          = args.type ?: 'image'
+    String target        = args.target ?: args.image
     String server        = args.server ?: 'http://trivy.trivy.svc:4954'
     String credentialsId = args.credentialsId ?: 'trivy-token'
     String severity      = args.severity ?: 'HIGH,CRITICAL'
+    String scanners      = args.scanners ? "--scanners ${args.scanners}" : ''
+    String extraArgs     = args.extraArgs ?: ''
+    String id            = args.id ?: 'trivy'           // Warnings NG id, also names the report files
+    String name          = args.name ?: 'Trivy'
+    String report        = id == 'trivy' ? 'trivy-report' : "${id}-report"
     int exitCode         = args.failBuild ? 1 : 0
 
-    echo "Scanning ${image} with Trivy (${severity})..."
+    echo "Scanning ${type} ${target} with Trivy (${severity})..."
     container('trivy') {
         withCredentials([string(credentialsId: credentialsId, variable: 'TRIVY_TOKEN')]) {
             withEnv(["TRIVY_SERVER=${server}", 'TRIVY_INSECURE=true', 'TRIVY_NO_PROGRESS=true', 'TRIVY_DISABLE_VEX_NOTICE=true',
                      // Fall back to ghcr.io when the mirror.gcr.io Java DB download fails
                      'TRIVY_JAVA_DB_REPOSITORY=mirror.gcr.io/aquasec/trivy-java-db:1,ghcr.io/aquasecurity/trivy-java-db:1']) {
-                sh "trivy image --severity ${severity} --format json --output trivy-report.json ${image}"
-                sh 'trivy convert --format table --output trivy-report.txt trivy-report.json'
-                sh 'trivy convert --format template --template @/contrib/html.tpl --output trivy-report.html trivy-report.json'
-                sh 'cat trivy-report.txt'
-                archiveArtifacts artifacts: 'trivy-report.*', allowEmptyArchive: true
-                publishHTML(target: [reportName: 'Trivy Report', reportDir: '.', reportFiles: 'trivy-report.html',
+                sh "trivy ${type} ${scanners} ${extraArgs} --severity ${severity} --format json --output ${report}.json ${target}"
+                sh "trivy convert --format table --output ${report}.txt ${report}.json"
+                sh "trivy convert --format template --template @/contrib/html.tpl --output ${report}.html ${report}.json"
+                sh "cat ${report}.txt"
+                archiveArtifacts artifacts: "${report}.*", allowEmptyArchive: true
+                publishHTML(target: [reportName: "${name} Report", reportDir: '.', reportFiles: "${report}.html",
                                      keepAll: true, alwaysLinkToLastBuild: true, allowMissing: false])
 
                 // Warnings NG: severity charts, trend across builds, new/fixed/outstanding tracking
-                recordIssues(tools: [trivy(pattern: 'trivy-report.json', id: 'trivy', name: 'Trivy')],
+                recordIssues(tools: [trivy(pattern: "${report}.json", id: id, name: name)],
                              enabledForFailure: true, skipPublishingChecks: true)
 
                 // Severity counts on the build list / history
                 def counts = severity.split(',').collect { sev ->
-                    def n = sh(returnStdout: true, script: "grep -o '\"Severity\": *\"${sev}\"' trivy-report.json | wc -l").trim()
+                    def n = sh(returnStdout: true, script: "grep -o '\"Severity\": *\"${sev}\"' ${report}.json | wc -l").trim()
                     "${sev} ${n}"
                 }
-                currentBuild.description = ([currentBuild.description, "Trivy: ${counts.join(' · ')}"] - null).join('\n')
-                int rc = sh(returnStatus: true, script: "trivy convert --severity ${severity} --exit-code ${exitCode} --format table --output /dev/null trivy-report.json")
+                currentBuild.description = ([currentBuild.description, "${name}: ${counts.join(' · ')}"] - null).join('\n')
+                int rc = sh(returnStatus: true, script: "trivy convert --severity ${severity} --exit-code ${exitCode} --format table --output /dev/null ${report}.json")
                 if (rc != 0) {
-                    error("Trivy found ${severity} vulnerabilities (exit code ${rc})")
+                    error("${name} found ${severity} vulnerabilities (exit code ${rc})")
                 }
             }
         }
